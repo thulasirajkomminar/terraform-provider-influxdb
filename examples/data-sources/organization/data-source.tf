@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     influxdb = {
-      source = "komminarlabs/influxdb"
+      source = "thulasirajkomminar/influxdb"
     }
   }
 }

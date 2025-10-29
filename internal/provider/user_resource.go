@@ -346,7 +346,7 @@ func (r *UserResource) ImportState(ctx context.Context, req resource.ImportState
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// manageOrgMembership handles adding/removing/updating user membership in organizations
+// manageOrgMembership handles adding/removing/updating user membership in organizations.
 func (r *UserResource) manageOrgMembership(ctx context.Context, userID string, oldOrgID, newOrgID, oldRole, newRole string) error {
 	// Remove from old organization if it exists and is different from new one
 	if oldOrgID != "" && oldOrgID != newOrgID {
@@ -414,7 +414,7 @@ func (r *UserResource) manageOrgMembership(ctx context.Context, userID string, o
 	return nil
 }
 
-// isNotFoundError checks if the error is a 404 not found error
+// isNotFoundError checks if the error is a 404 not found error.
 func isNotFoundError(err error) bool {
 	if err == nil {
 		return false

@@ -41,7 +41,7 @@ type TaskLinksModel struct {
 	Self    types.String `tfsdk:"self"`
 }
 
-// convertDomainTaskToModel converts a domain.Task to TaskModel
+// convertDomainTaskToModel converts a domain.Task to TaskModel.
 func convertDomainTaskToModel(ctx context.Context, task *domain.Task) TaskModel {
 	// Convert labels if present
 	labelsList := convertLabelsToList(ctx, task.Labels)
@@ -72,7 +72,7 @@ func convertDomainTaskToModel(ctx context.Context, task *domain.Task) TaskModel 
 	}
 }
 
-// Helper function to convert domain labels to types.List
+// Helper function to convert domain labels to types.List.
 func convertLabelsToList(ctx context.Context, domainLabels *domain.Labels) types.List {
 	if domainLabels == nil || len(*domainLabels) == 0 {
 		// Return null list with proper element type
@@ -135,7 +135,7 @@ func convertLabelsToList(ctx context.Context, domainLabels *domain.Labels) types
 	return labelsListValue
 }
 
-// Helper function to convert domain.Links to types.Object
+// Helper function to convert domain.Links to types.Object.
 func convertLinksToObject(links *struct {
 	Labels  *domain.Link `json:"labels,omitempty"`
 	Logs    *domain.Link `json:"logs,omitempty"`
@@ -183,7 +183,7 @@ func convertLinksToObject(links *struct {
 	return objectValue
 }
 
-// Helper function to convert domain.Link to string
+// Helper function to convert domain.Link to string.
 func convertLinkToString(link *domain.Link) types.String {
 	if link != nil {
 		return types.StringValue(string(*link))
@@ -191,7 +191,7 @@ func convertLinkToString(link *domain.Link) types.String {
 	return types.StringNull()
 }
 
-// Helper function to convert time.Time to string
+// Helper function to convert time.Time to string.
 func convertTimeToString(t *time.Time) types.String {
 	if t != nil {
 		return types.StringValue(t.Format(time.RFC3339))
@@ -199,7 +199,7 @@ func convertTimeToString(t *time.Time) types.String {
 	return types.StringNull()
 }
 
-// Helper function to convert TaskLastRunStatus to string
+// Helper function to convert TaskLastRunStatus to string.
 func convertTaskStatusToString(status *domain.TaskLastRunStatus) types.String {
 	if status != nil {
 		return types.StringValue(string(*status))

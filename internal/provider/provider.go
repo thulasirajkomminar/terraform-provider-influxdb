@@ -46,7 +46,7 @@ func (p *InfluxDBProvider) Schema(ctx context.Context, req provider.SchemaReques
 
 		Attributes: map[string]schema.Attribute{
 			"url": schema.StringAttribute{
-				Description: "The InfluxDB Cloud Dedicated server URL",
+				Description: "The InfluxDB server URL",
 				Optional:    true,
 			},
 			"token": schema.StringAttribute{

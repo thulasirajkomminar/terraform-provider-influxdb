@@ -17,7 +17,7 @@ type LabelModel struct {
 }
 
 // convertLabelProperties converts domain.Label_Properties to types.Map
-// Returns a null map if properties are nil/empty, otherwise converts AdditionalProperties
+// Returns a null map if properties are nil/empty, otherwise converts AdditionalProperties.
 func convertLabelProperties(ctx context.Context, props *domain.Label_Properties) (types.Map, diag.Diagnostics) {
 	if props == nil || props.AdditionalProperties == nil {
 		return types.MapNull(types.StringType), nil

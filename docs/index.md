@@ -42,7 +42,7 @@ When both authentication methods are provided, **token authentication takes prio
 terraform {
   required_providers {
     influxdb = {
-      source = "komminarlabs/influxdb"
+      source = "thulasirajkomminar/influxdb"
     }
   }
 }
@@ -86,5 +86,5 @@ terraform plan
 
 - `password` (String, Sensitive) The InfluxDB password
 - `token` (String, Sensitive) An InfluxDB token string
-- `url` (String) The InfluxDB Cloud Dedicated server URL
+- `url` (String) The InfluxDB server URL
 - `username` (String) The InfluxDB username
