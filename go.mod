@@ -1,4 +1,4 @@
-module github.com/thulasirajkomminar/terraform-provider-influxdb
+module github.com/thulasirajkomminar/terraform-provider-influxdb/v2
 
 go 1.24.0
 
