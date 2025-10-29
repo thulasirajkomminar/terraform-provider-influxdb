@@ -42,7 +42,7 @@ When both authentication methods are provided, **token authentication takes prio
 terraform {
   required_providers {
     influxdb = {
-      source = "komminarlabs/influxdb"
+      source = "thulasirajkomminar/influxdb"
     }
   }
 }

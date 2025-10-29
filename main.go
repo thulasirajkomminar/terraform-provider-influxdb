@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/komminarlabs/terraform-provider-influxdb/internal/provider"
+	"github.com/thulasirajkomminar/terraform-provider-influxdb/internal/provider"
 )
 
 var (
@@ -26,7 +26,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/komminarlabs/influxdb",
+		Address: "registry.terraform.io/thulasirajkomminar/influxdb",
 		Debug:   debug,
 	}
 
