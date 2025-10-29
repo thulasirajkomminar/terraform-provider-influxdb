@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"os"
 	"testing"
 
@@ -57,7 +56,7 @@ func TestAccLabelsDataSourceWithProperties(t *testing.T) {
 }
 
 func testAccLabelsDataSourceConfig() string {
-	return fmt.Sprintf(`
+	return `
 resource "influxdb_label" "test1" {
   name   = "test-labels-1"
   org_id = "` + os.Getenv("INFLUXDB_ORG_ID") + `"
@@ -71,17 +70,17 @@ resource "influxdb_label" "test2" {
 data "influxdb_labels" "test" {
   depends_on = [influxdb_label.test1, influxdb_label.test2]
 }
-`)
+`
 }
 
 func testAccLabelsDataSourceWithPropertiesConfig() string {
-	return fmt.Sprintf(`
+	return `
 resource "influxdb_label" "test1" {
   name   = "test-labels-props-1"
   org_id = "` + os.Getenv("INFLUXDB_ORG_ID") + `"
   properties = {
-    "environment" = "test"
-    "team"        = "qa"
+	"environment" = "test"
+	"team"        = "qa"
   }
 }
 
@@ -89,13 +88,13 @@ resource "influxdb_label" "test2" {
   name   = "test-labels-props-2"
   org_id = "` + os.Getenv("INFLUXDB_ORG_ID") + `"
   properties = {
-    "environment" = "production"
-    "priority"    = "high"
+	"environment" = "production"
+	"priority"    = "high"
   }
 }
 
 data "influxdb_labels" "test" {
   depends_on = [influxdb_label.test1, influxdb_label.test2]
 }
-`)
+`
 }

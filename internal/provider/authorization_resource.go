@@ -245,7 +245,7 @@ func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateR
 	plan.Token = types.StringPointerValue(apiResponse.Token)
 	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
 	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.Description = types.StringValue(*apiResponse.AuthorizationUpdateRequest.Description)
+	plan.Description = types.StringValue(*apiResponse.Description)
 	plan.Permissions = getPermissions(*apiResponse.Permissions)
 
 	// Save data into Terraform state
@@ -301,7 +301,7 @@ func (r *AuthorizationResource) Read(ctx context.Context, req resource.ReadReque
 	state.OrgID = types.StringPointerValue(authorization.OrgID)
 	state.CreatedAt = types.StringValue(authorization.CreatedAt.String())
 	state.UpdatedAt = types.StringValue(authorization.UpdatedAt.String())
-	state.Description = types.StringValue(*authorization.AuthorizationUpdateRequest.Description)
+	state.Description = types.StringValue(*authorization.Description)
 	state.Status = types.StringValue(string(*authorization.Status))
 	state.Permissions = getPermissions(*authorization.Permissions)
 
@@ -348,7 +348,7 @@ func (r *AuthorizationResource) Update(ctx context.Context, req resource.UpdateR
 	plan.Token = types.StringPointerValue(apiResponse.Token)
 	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
 	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.Description = types.StringValue(*apiResponse.AuthorizationUpdateRequest.Description)
+	plan.Description = types.StringValue(*apiResponse.Description)
 	plan.Permissions = getPermissions(*apiResponse.Permissions)
 
 	// Save updated data into Terraform state

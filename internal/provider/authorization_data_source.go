@@ -200,7 +200,7 @@ func (d *AuthorizationDataSource) Read(ctx context.Context, req datasource.ReadR
 	state.Token = types.StringPointerValue(authorization.Token)
 	state.CreatedAt = types.StringValue(authorization.CreatedAt.String())
 	state.UpdatedAt = types.StringValue(authorization.UpdatedAt.String())
-	state.Description = types.StringValue(*authorization.AuthorizationUpdateRequest.Description)
+	state.Description = types.StringValue(*authorization.Description)
 	state.Status = types.StringValue(string(*authorization.Status))
 
 	// Set state

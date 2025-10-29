@@ -156,7 +156,7 @@ func (d *UserDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 }
 
-// getUserOrgMembership gets the organization membership information for a user
+// getUserOrgMembership gets the organization membership information for a user.
 func (d *UserDataSource) getUserOrgMembership(ctx context.Context, userID string) (orgID string, orgRole string, err error) {
 	// Get all organizations
 	orgs, err := d.client.OrganizationsAPI().GetOrganizations(ctx)
