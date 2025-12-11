@@ -5,7 +5,7 @@ All notable changes to this project will automatically be documented in this fil
 The format is based on vKeep a Changelog(https://keepachangelog.com/en/1.0.0/),
 and this project adheres to vSemantic Versioning(https://semver.org/spec/v2.0.0.html).
 
-## v2.0.0 - 2025-10-29
+## v1.5.0 - 2025-12-11
 
 ### What's Changed
 
@@ -13,7 +13,7 @@ and this project adheres to vSemantic Versioning(https://semver.org/spec/v2.0.0.
 
 > [!Important]
 >
-> The older versions of the provider are still available under the `komminarlabs/influxdb` namespace on the Terraform Registry. But the new versions (`v2.0.0` and above) will be available under the `thulasirajkomminar/influxdb` namespace. Please update your provider source accordingly in your Terraform configurations.
+> The older versions of the provider are still available under the `komminarlabs/influxdb` namespace on the Terraform Registry. But the new versions (`v1.5.0` and above) will be available under the `thulasirajkomminar/influxdb` namespace. Please update your provider source accordingly in your Terraform configurations.
 
 ## v1.4.1 - 2025-07-14
 
