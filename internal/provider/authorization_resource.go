@@ -91,11 +91,12 @@ func (r *AuthorizationResource) Schema(ctx context.Context, req resource.SchemaR
 				},
 			},
 			"user_id": schema.StringAttribute{
+				Computed:    true,
 				Optional:    true,
 				Description: "A user ID. Specifies the user that the authorization is scoped to.",
 			},
 			"user": schema.StringAttribute{
-				Optional:    true,
+				Computed:    true,
 				Description: "A user name. Specifies the user that the authorization is scoped to.",
 			},
 			"created_at": schema.StringAttribute{
@@ -219,13 +220,15 @@ func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	createAuthorization := domain.Authorization{
-		Id:          plan.Id.ValueStringPointer(),
-		Org:         plan.Org.ValueStringPointer(),
 		OrgID:       plan.OrgID.ValueStringPointer(),
 		Permissions: &permissions,
 		AuthorizationUpdateRequest: domain.AuthorizationUpdateRequest{
 			Description: plan.Description.ValueStringPointer(),
 		},
+	}
+
+	if !plan.UserID.IsNull() && !plan.UserID.IsUnknown() {
+		createAuthorization.UserID = plan.UserID.ValueStringPointer()
 	}
 
 	apiResponse, err := r.client.AuthorizationsAPI().CreateAuthorization(ctx, &createAuthorization)
@@ -247,6 +250,8 @@ func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateR
 	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
 	plan.Description = types.StringValue(*apiResponse.Description)
 	plan.Permissions = getPermissions(*apiResponse.Permissions)
+	plan.User = types.StringPointerValue(apiResponse.User)
+	plan.UserID = types.StringPointerValue(apiResponse.UserID)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -304,6 +309,8 @@ func (r *AuthorizationResource) Read(ctx context.Context, req resource.ReadReque
 	state.Description = types.StringValue(*authorization.Description)
 	state.Status = types.StringValue(string(*authorization.Status))
 	state.Permissions = getPermissions(*authorization.Permissions)
+	state.User = types.StringPointerValue(authorization.User)
+	state.UserID = types.StringPointerValue(authorization.UserID)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -350,6 +357,8 @@ func (r *AuthorizationResource) Update(ctx context.Context, req resource.UpdateR
 	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
 	plan.Description = types.StringValue(*apiResponse.Description)
 	plan.Permissions = getPermissions(*apiResponse.Permissions)
+	plan.User = types.StringPointerValue(apiResponse.User)
+	plan.UserID = types.StringPointerValue(apiResponse.UserID)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)

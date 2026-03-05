@@ -108,7 +108,7 @@ Set the below environment variables to run the tests:
 1. `INFLUXDB_URL`
 2. `INFLUXDB_TOKEN` (for token-based authentication)
 3. `INFLUXDB_USERNAME` and `INFLUXDB_PASSWORD` (for username/password authentication)
-4. `INFLUXDB_ORG` (the organization to use for the tests)
+4. `INFLUXDB_ORG_ID` (the organization to use for the tests)
 
 In order to run the full suite of Acceptance tests, run `make testacc`.
 

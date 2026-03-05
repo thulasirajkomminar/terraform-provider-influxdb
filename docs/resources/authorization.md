@@ -24,7 +24,6 @@ Creates and manages an authorization and returns the authorization with the gene
 
 - `description` (String) A description of the token.
 - `status` (String) Status of the token. Valid values are `active` or `inactive`.
-- `user` (String) A user name. Specifies the user that the authorization is scoped to.
 - `user_id` (String) A user ID. Specifies the user that the authorization is scoped to.
 
 ### Read-Only
@@ -34,6 +33,7 @@ Creates and manages an authorization and returns the authorization with the gene
 - `org` (String) Organization name. Specifies the organization that owns the authorization.
 - `token` (String, Sensitive) The API token.
 - `updated_at` (String) Last Authorization update date.
+- `user` (String) A user name. Specifies the user that the authorization is scoped to.
 
 <a id="nestedatt--permissions"></a>
 ### Nested Schema for `permissions`
