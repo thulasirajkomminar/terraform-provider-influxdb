@@ -202,6 +202,8 @@ func (d *AuthorizationDataSource) Read(ctx context.Context, req datasource.ReadR
 	state.UpdatedAt = types.StringValue(authorization.UpdatedAt.String())
 	state.Description = types.StringValue(*authorization.Description)
 	state.Status = types.StringValue(string(*authorization.Status))
+	state.User = types.StringPointerValue(authorization.User)
+	state.UserID = types.StringPointerValue(authorization.UserID)
 
 	// Set state
 	diags := resp.State.Set(ctx, &state)

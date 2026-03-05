@@ -10,7 +10,7 @@ type AuthorizationModel struct {
 	Description types.String                   `tfsdk:"description"`
 	OrgID       types.String                   `tfsdk:"org_id"`
 	Org         types.String                   `tfsdk:"org"`
-	UserId      types.String                   `tfsdk:"user_id"`
+	UserID      types.String                   `tfsdk:"user_id"`
 	User        types.String                   `tfsdk:"user"`
 	CreatedAt   types.String                   `tfsdk:"created_at"`
 	UpdatedAt   types.String                   `tfsdk:"updated_at"`

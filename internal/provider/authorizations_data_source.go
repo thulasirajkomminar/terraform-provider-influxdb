@@ -199,6 +199,8 @@ func (d *AuthorizationsDataSource) Read(ctx context.Context, req datasource.Read
 			Description: types.StringValue(*authorization.Description),
 			Status:      types.StringValue(string(*authorization.Status)),
 			Permissions: permissionsState,
+			User:        types.StringPointerValue(authorization.User),
+			UserID:      types.StringPointerValue(authorization.UserID),
 		}
 
 		state.Authorizations = append(state.Authorizations, authorizationState)
