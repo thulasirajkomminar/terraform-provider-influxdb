@@ -1,0 +1,77 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":rebaseStalePrs",
+    "group:allNonMajor"
+  ],
+  "schedule": [
+    "before 9am on monday"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "automerge": false,
+  "prConcurrentLimit": 8,
+  "prHourlyLimit": 3,
+  "rebaseWhen": "behind-base-branch",
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
+  "packageRules": [
+    {
+      "description": "Terraform Plugin SDK / Framework",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackagePatterns": [
+        "github.com/hashicorp/terraform-plugin-sdk",
+        "github.com/hashicorp/terraform-plugin-framework",
+        "github.com/hashicorp/terraform-plugin-go",
+        "github.com/hashicorp/terraform-plugin-testing"
+      ],
+      "groupName": "Terraform Plugin SDK & Framework",
+      "labels": [
+        "dependencies",
+        "terraform-sdk"
+      ]
+    },
+    {
+      "description": "Go toolchain version",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
+      "groupName": "Go toolchain"
+    },
+    {
+      "description": "GitHub Actions — group all",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Major Go dep bumps — always explicit PR",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "labels": [
+        "breaking-change",
+        "dependencies"
+      ]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security"
+    ]
+  }
+}
