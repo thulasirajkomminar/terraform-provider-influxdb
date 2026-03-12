@@ -25,16 +25,16 @@
       "matchManagers": [
         "gomod"
       ],
-      "matchPackagePatterns": [
-        "github.com/hashicorp/terraform-plugin-sdk",
-        "github.com/hashicorp/terraform-plugin-framework",
-        "github.com/hashicorp/terraform-plugin-go",
-        "github.com/hashicorp/terraform-plugin-testing"
-      ],
       "groupName": "Terraform Plugin SDK & Framework",
       "labels": [
         "dependencies",
         "terraform-sdk"
+      ],
+      "matchPackageNames": [
+        "/github.com/hashicorp/terraform-plugin-sdk/",
+        "/github.com/hashicorp/terraform-plugin-framework/",
+        "/github.com/hashicorp/terraform-plugin-go/",
+        "/github.com/hashicorp/terraform-plugin-testing/"
       ]
     },
     {
