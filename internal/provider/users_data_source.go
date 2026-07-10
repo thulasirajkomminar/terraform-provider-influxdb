@@ -81,22 +81,9 @@ func (d *UsersDataSource) Schema(ctx context.Context, req datasource.SchemaReque
 
 // Configure adds the provider configured client to the data source.
 func (d *UsersDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -107,7 +94,7 @@ func (d *UsersDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to list users",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -115,14 +102,19 @@ func (d *UsersDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 
 	// Map response body to model
 	for _, user := range *users {
+		status := types.StringNull()
+		if user.Status != nil {
+			status = types.StringValue(string(*user.Status))
+		}
+
 		userState := UserModel{
-			Id:     types.StringValue(*user.Id),
+			Id:     types.StringPointerValue(user.Id),
 			Name:   types.StringValue(user.Name),
-			Status: types.StringValue(string(*user.Status)),
+			Status: status,
 		}
 
 		// Get organization membership information
-		orgID, orgRole, err := d.getUserOrgMembership(ctx, *user.Id)
+		orgID, orgRole, err := getUserOrgMembership(ctx, d.client, userState.Id.ValueString())
 		if err != nil {
 			// Log warning but don't fail - organization membership is optional information
 			resp.Diagnostics.AddWarning(
@@ -152,39 +144,4 @@ func (d *UsersDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-}
-
-// getUserOrgMembership gets the organization membership information for a user.
-func (d *UsersDataSource) getUserOrgMembership(ctx context.Context, userID string) (orgID string, orgRole string, err error) {
-	// Get all organizations
-	orgs, err := d.client.OrganizationsAPI().GetOrganizations(ctx)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get organizations: %w", err)
-	}
-
-	// Check each organization for user membership
-	for _, org := range *orgs {
-		// Check if user is an owner
-		owners, err := d.client.OrganizationsAPI().GetOwnersWithID(ctx, *org.Id)
-		if err == nil && owners != nil {
-			for _, owner := range *owners {
-				if *owner.Id == userID {
-					return *org.Id, "owner", nil
-				}
-			}
-		}
-
-		// Check if user is a member
-		members, err := d.client.OrganizationsAPI().GetMembersWithID(ctx, *org.Id)
-		if err == nil && members != nil {
-			for _, member := range *members {
-				if *member.Id == userID {
-					return *org.Id, "member", nil
-				}
-			}
-		}
-	}
-
-	// User is not a member of any organization
-	return "", "", nil
 }

@@ -2,11 +2,10 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -69,11 +68,13 @@ func (d *BucketsDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Bucket creation date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Bucket creation date in RFC3339 format.",
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Last bucket update date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Last bucket update date in RFC3339 format.",
 						},
 						"retention_period": schema.Int64Attribute{
 							Computed:    true,
@@ -88,22 +89,9 @@ func (d *BucketsDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 
 // Configure adds the provider configured client to the data source.
 func (d *BucketsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -114,7 +102,7 @@ func (d *BucketsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to list buckets",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -122,16 +110,8 @@ func (d *BucketsDataSource) Read(ctx context.Context, req datasource.ReadRequest
 
 	// Map response body to model
 	for _, bucket := range *buckets {
-		bucketState := BucketModel{
-			Id:              types.StringValue(*bucket.Id),
-			OrgID:           types.StringValue(*bucket.OrgID),
-			Type:            types.StringValue(string(*bucket.Type)),
-			Description:     types.StringPointerValue(bucket.Description),
-			Name:            types.StringValue(bucket.Name),
-			CreatedAt:       types.StringValue(bucket.CreatedAt.String()),
-			UpdatedAt:       types.StringValue(bucket.UpdatedAt.String()),
-			RetentionPeriod: types.Int64Value(bucket.RetentionRules[0].EverySeconds),
-		}
+		var bucketState BucketModel
+		populateBucketModel(&bucketState, &bucket)
 
 		state.Buckets = append(state.Buckets, bucketState)
 	}

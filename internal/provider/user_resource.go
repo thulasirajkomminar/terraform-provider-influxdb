@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -21,7 +20,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_ resource.Resource                = &UserResource{}
-	_ resource.ResourceWithImportState = &UserResource{}
+	_ resource.ResourceWithConfigure   = &UserResource{}
 	_ resource.ResourceWithImportState = &UserResource{}
 )
 
@@ -170,19 +169,32 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	// Get refreshed user value from InfluxDB
 	user, err := r.client.UsersAPI().FindUserByID(ctx, state.Id.ValueString())
 	if err != nil {
+		// The user was deleted outside of Terraform: remove it from state so
+		// Terraform plans a re-create.
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		resp.Diagnostics.AddError(
-			"User not found",
-			err.Error(),
+			"Error getting user",
+			formatAPIError(err),
 		)
 
 		return
+	}
+
+	status := types.StringNull()
+	if user.Status != nil {
+		status = types.StringValue(string(*user.Status))
 	}
 
 	// Overwrite items with refreshed state
 	state = UserModel{
 		Id:       types.StringPointerValue(user.Id),
 		Name:     types.StringValue(user.Name),
-		Status:   types.StringValue(string(*user.Status)),
+		Status:   status,
 		Password: state.Password, // Preserve password from current state since API doesn't return it
 		OrgId:    state.OrgId,    // Preserve org_id from current state
 		OrgRole:  state.OrgRole,  // Preserve org_role from current state
@@ -324,22 +336,9 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 // Configure adds the provider configured client to the resource.
 func (r *UserResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -412,14 +411,4 @@ func (r *UserResource) manageOrgMembership(ctx context.Context, userID string, o
 	}
 
 	return nil
-}
-
-// isNotFoundError checks if the error is a 404 not found error.
-func isNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for common "not found" error patterns
-	errMsg := err.Error()
-	return strings.Contains(errMsg, "not found") || strings.Contains(errMsg, "404")
 }

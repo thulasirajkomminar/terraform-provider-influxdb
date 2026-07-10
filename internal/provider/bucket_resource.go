@@ -2,8 +2,9 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -12,16 +13,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/domain"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &BucketResource{}
-	_ resource.ResourceWithImportState = &BucketResource{}
-	_ resource.ResourceWithImportState = &BucketResource{}
+	_ resource.Resource                 = &BucketResource{}
+	_ resource.ResourceWithConfigure    = &BucketResource{}
+	_ resource.ResourceWithImportState  = &BucketResource{}
+	_ resource.ResourceWithUpgradeState = &BucketResource{}
 )
 
 // NewBucketResource is a helper function to simplify the provider implementation.
@@ -44,6 +45,9 @@ func (r *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Creates and manages a bucket.",
+
+		// Version 1 stores timestamps as RFC3339.
+		Version: 1,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -76,19 +80,32 @@ func (r *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Bucket creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Bucket creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last bucket update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last bucket update date in RFC3339 format.",
 			},
 			"retention_period": schema.Int64Attribute{ // buckets cannot have more than one retention rule at this time
 				Computed:    true,
 				Optional:    true,
 				Default:     int64default.StaticInt64(2592000),
 				Description: "The duration in seconds for how long data will be kept in the database. The default duration is `2592000` (30 days). `0` represents infinite retention.",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
+				},
 			},
 		},
+	}
+}
+
+// UpgradeState migrates state written by prior provider versions: timestamps
+// move from Go's time.Time.String() format to RFC3339.
+func (r *BucketResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: timestampStateUpgrader("created_at", "updated_at"),
 	}
 }
 
@@ -116,21 +133,14 @@ func (r *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating bucket",
-			"Could not create bucket, unexpected error: "+err.Error(),
+			"Could not create bucket, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.OrgID = types.StringPointerValue(apiResponse.OrgID)
-	plan.Name = types.StringValue(apiResponse.Name)
-	plan.Type = types.StringValue(string(*apiResponse.Type))
-	plan.Description = types.StringPointerValue(apiResponse.Description)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.RetentionPeriod = types.Int64Value(apiResponse.RetentionRules[0].EverySeconds)
+	populateBucketModel(&plan, apiResponse)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -153,23 +163,24 @@ func (r *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 	// Get refreshed bucket value from InfluxDB
 	readBucket, err := r.client.BucketsAPI().FindBucketByID(ctx, state.Id.ValueString())
 	if err != nil {
+		// The bucket was deleted outside of Terraform: remove it from state
+		// so Terraform plans a re-create.
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		resp.Diagnostics.AddError(
-			"Bucket not found",
-			err.Error(),
+			"Error getting bucket",
+			formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Overwrite items with refreshed state
-	state.Id = types.StringPointerValue(readBucket.Id)
-	state.OrgID = types.StringPointerValue(readBucket.OrgID)
-	state.Name = types.StringValue(readBucket.Name)
-	state.Type = types.StringValue(string(*readBucket.Type))
-	state.Description = types.StringPointerValue(readBucket.Description)
-	state.CreatedAt = types.StringValue(readBucket.CreatedAt.String())
-	state.UpdatedAt = types.StringValue(readBucket.UpdatedAt.String())
-	state.RetentionPeriod = types.Int64Value(readBucket.RetentionRules[0].EverySeconds)
+	populateBucketModel(&state, readBucket)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -204,21 +215,14 @@ func (r *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating bucket",
-			"Could not update bucket, unexpected error: "+err.Error(),
+			"Could not update bucket, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.OrgID = types.StringPointerValue(apiResponse.OrgID)
-	plan.Name = types.StringValue(apiResponse.Name)
-	plan.Type = types.StringValue(string(*apiResponse.Type))
-	plan.Description = types.StringPointerValue(apiResponse.Description)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.RetentionPeriod = types.Int64Value(apiResponse.RetentionRules[0].EverySeconds)
+	populateBucketModel(&plan, apiResponse)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -238,11 +242,11 @@ func (r *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	// Delete existing bucket
-	err := r.client.BucketsAPI().DeleteBucketWithID(ctx, *state.Id.ValueStringPointer())
-	if err != nil {
+	err := r.client.BucketsAPI().DeleteBucketWithID(ctx, state.Id.ValueString())
+	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting bucket",
-			"Could not delete bucket, unexpected error: "+err.Error(),
+			"Could not delete bucket, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -251,22 +255,9 @@ func (r *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 
 // Configure adds the provider configured client to the resource.
 func (r *BucketResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

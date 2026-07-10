@@ -24,8 +24,8 @@ Lists organizations. InfluxDB returns all organizations.
 
 Read-Only:
 
-- `created_at` (String) Organization creation date.
+- `created_at` (String) Organization creation date in RFC3339 format.
 - `description` (String) The description of the organization.
 - `id` (String) An organization ID.
 - `name` (String) The name of the organization.
-- `updated_at` (String) Last Organization update date.
+- `updated_at` (String) Last Organization update date in RFC3339 format.

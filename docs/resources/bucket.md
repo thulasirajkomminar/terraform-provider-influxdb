@@ -28,6 +28,6 @@ Creates and manages a bucket.
 
 ### Read-Only
 
-- `created_at` (String) Bucket creation date.
+- `created_at` (String) Bucket creation date in RFC3339 format.
 - `id` (String) A Bucket ID.
-- `updated_at` (String) Last bucket update date.
+- `updated_at` (String) Last bucket update date in RFC3339 format.

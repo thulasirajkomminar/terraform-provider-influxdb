@@ -1,11 +1,14 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
 func TestAccBucketResource(t *testing.T) {
@@ -37,6 +40,50 @@ func TestAccBucketResource(t *testing.T) {
 				),
 			},
 			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+// TestAccBucketResourceOutOfBandDeletion verifies that a bucket deleted
+// outside of Terraform is removed from state on refresh and planned for
+// re-creation instead of failing the refresh.
+func TestAccBucketResourceOutOfBandDeletion(t *testing.T) {
+	if os.Getenv("INFLUXDB_TOKEN") == "" {
+		t.Skip("INFLUXDB_TOKEN must be set: this test deletes the bucket out-of-band through the API")
+	}
+
+	bucketName := acctest.RandomWithPrefix("tf-bucket-test")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + testAccBucketResourceConfig(bucketName, "out-of-band deletion test"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("influxdb_bucket.test", "name", bucketName),
+				),
+			},
+			// Delete the bucket behind Terraform's back, then refresh: the
+			// resource must drop out of state and the follow-up plan must be
+			// a re-create, not an error.
+			{
+				PreConfig: func() {
+					client := influxdb2.NewClient(os.Getenv("INFLUXDB_URL"), os.Getenv("INFLUXDB_TOKEN"))
+					defer client.Close()
+
+					ctx := context.Background()
+					bucket, err := client.BucketsAPI().FindBucketByName(ctx, bucketName)
+					if err != nil {
+						t.Fatalf("finding bucket for out-of-band deletion: %s", err)
+					}
+					if err := client.BucketsAPI().DeleteBucket(ctx, bucket); err != nil {
+						t.Fatalf("deleting bucket out-of-band: %s", err)
+					}
+				},
+				RefreshState:       true,
+				ExpectNonEmptyPlan: true,
+			},
 		},
 	})
 }

@@ -18,7 +18,7 @@ Creates and manages an authorization and returns the authorization with the gene
 ### Required
 
 - `org_id` (String) An organization ID. Specifies the organization that owns the authorization.
-- `permissions` (Attributes List) A list of permissions for an authorization. (see [below for nested schema](#nestedatt--permissions))
+- `permissions` (Attributes Set) A set of permissions for an authorization. The order of the permissions is not significant. (see [below for nested schema](#nestedatt--permissions))
 
 ### Optional
 
@@ -28,11 +28,11 @@ Creates and manages an authorization and returns the authorization with the gene
 
 ### Read-Only
 
-- `created_at` (String) Authorization creation date.
+- `created_at` (String) Authorization creation date in RFC3339 format.
 - `id` (String) The authorization ID.
 - `org` (String) Organization name. Specifies the organization that owns the authorization.
 - `token` (String, Sensitive) The API token.
-- `updated_at` (String) Last Authorization update date.
+- `updated_at` (String) Last Authorization update date in RFC3339 format.
 - `user` (String) A user name. Specifies the user that the authorization is scoped to.
 
 <a id="nestedatt--permissions"></a>

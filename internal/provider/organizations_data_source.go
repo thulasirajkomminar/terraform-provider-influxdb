@@ -2,11 +2,10 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -61,11 +60,13 @@ func (d *OrganizationsDataSource) Schema(ctx context.Context, req datasource.Sch
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Organization creation date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Organization creation date in RFC3339 format.",
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Last Organization update date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Last Organization update date in RFC3339 format.",
 						},
 					},
 				},
@@ -76,22 +77,9 @@ func (d *OrganizationsDataSource) Schema(ctx context.Context, req datasource.Sch
 
 // Configure adds the provider configured client to the data source.
 func (d *OrganizationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -102,7 +90,7 @@ func (d *OrganizationsDataSource) Read(ctx context.Context, req datasource.ReadR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to list Organizations",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -110,13 +98,8 @@ func (d *OrganizationsDataSource) Read(ctx context.Context, req datasource.ReadR
 
 	// Map response body to model
 	for _, organization := range *organizations {
-		organizationState := OrganizationModel{
-			Id:          types.StringPointerValue(organization.Id),
-			Name:        types.StringValue(organization.Name),
-			Description: types.StringPointerValue(organization.Description),
-			CreatedAt:   types.StringValue(organization.CreatedAt.String()),
-			UpdatedAt:   types.StringValue(organization.UpdatedAt.String()),
-		}
+		var organizationState OrganizationModel
+		populateOrganizationModel(&organizationState, &organization)
 
 		state.Organizations = append(state.Organizations, organizationState)
 	}

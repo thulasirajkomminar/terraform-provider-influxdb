@@ -21,10 +21,10 @@ Retrieves a bucket. Use this data source to retrieve information for a specific 
 
 ### Read-Only
 
-- `created_at` (String) Bucket creation date.
+- `created_at` (String) Bucket creation date in RFC3339 format.
 - `description` (String) A description of the bucket.
 - `id` (String) A Bucket ID.
 - `org_id` (String) An organization ID.
 - `retention_period` (Number) The duration in seconds for how long data will be kept in the database. `0` represents infinite retention.
 - `type` (String) The Bucket type.
-- `updated_at` (String) Last bucket update date.
+- `updated_at` (String) Last bucket update date in RFC3339 format.

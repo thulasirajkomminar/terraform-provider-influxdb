@@ -21,7 +21,7 @@ Retrieves an organization. Use this data source to retrieve information for a sp
 
 ### Read-Only
 
-- `created_at` (String) Organization creation date.
+- `created_at` (String) Organization creation date in RFC3339 format.
 - `description` (String) The description of the organization.
 - `id` (String) An organization ID.
-- `updated_at` (String) Last Organization update date.
+- `updated_at` (String) Last Organization update date in RFC3339 format.

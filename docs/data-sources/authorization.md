@@ -21,14 +21,14 @@ Retrieves an authorization. Use this data source to retrieve information about a
 
 ### Read-Only
 
-- `created_at` (String) Authorization creation date.
+- `created_at` (String) Authorization creation date in RFC3339 format.
 - `description` (String) A description of the token.
 - `org` (String) Organization name. Specifies the organization that owns the authorization.
 - `org_id` (String) An organization ID. Specifies the organization that owns the authorization.
-- `permissions` (Attributes List) A list of permissions for an authorization. (see [below for nested schema](#nestedatt--permissions))
+- `permissions` (Attributes Set) A set of permissions for an authorization. (see [below for nested schema](#nestedatt--permissions))
 - `status` (String) Status of the token.
 - `token` (String, Sensitive) The API token.
-- `updated_at` (String) Last Authorization update date.
+- `updated_at` (String) Last Authorization update date in RFC3339 format.
 - `user` (String) A user name. Specifies the user that the authorization is scoped to.
 - `user_id` (String) A user ID. Specifies the user that the authorization is scoped to.
 

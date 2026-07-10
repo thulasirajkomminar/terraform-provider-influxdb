@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
-	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/influxdata/influxdb-client-go/v2/domain"
@@ -11,25 +11,25 @@ import (
 
 // TaskModel maps InfluxDB label schema data.
 type TaskModel struct {
-	AuthorizationID types.String `tfsdk:"authorization_id"`
-	CreatedAt       types.String `tfsdk:"created_at"`
-	Cron            types.String `tfsdk:"cron"`
-	Description     types.String `tfsdk:"description"`
-	Every           types.String `tfsdk:"every"`
-	Flux            types.String `tfsdk:"flux"`
-	Id              types.String `tfsdk:"id"`
-	Labels          types.List   `tfsdk:"labels"`
-	LastRunError    types.String `tfsdk:"last_run_error"`
-	LastRunStatus   types.String `tfsdk:"last_run_status"`
-	LatestCompleted types.String `tfsdk:"latest_completed"`
-	Links           types.Object `tfsdk:"links"`
-	Name            types.String `tfsdk:"name"`
-	Offset          types.String `tfsdk:"offset"`
-	Org             types.String `tfsdk:"org"`
-	OrgID           types.String `tfsdk:"org_id"`
-	OwnerID         types.String `tfsdk:"owner_id"`
-	Status          types.String `tfsdk:"status"`
-	UpdatedAt       types.String `tfsdk:"updated_at"`
+	AuthorizationID types.String      `tfsdk:"authorization_id"`
+	CreatedAt       timetypes.RFC3339 `tfsdk:"created_at"`
+	Cron            types.String      `tfsdk:"cron"`
+	Description     types.String      `tfsdk:"description"`
+	Every           types.String      `tfsdk:"every"`
+	Flux            types.String      `tfsdk:"flux"`
+	Id              types.String      `tfsdk:"id"`
+	Labels          types.List        `tfsdk:"labels"`
+	LastRunError    types.String      `tfsdk:"last_run_error"`
+	LastRunStatus   types.String      `tfsdk:"last_run_status"`
+	LatestCompleted timetypes.RFC3339 `tfsdk:"latest_completed"`
+	Links           types.Object      `tfsdk:"links"`
+	Name            types.String      `tfsdk:"name"`
+	Offset          types.String      `tfsdk:"offset"`
+	Org             types.String      `tfsdk:"org"`
+	OrgID           types.String      `tfsdk:"org_id"`
+	OwnerID         types.String      `tfsdk:"owner_id"`
+	Status          types.String      `tfsdk:"status"`
+	UpdatedAt       timetypes.RFC3339 `tfsdk:"updated_at"`
 }
 
 type TaskLinksModel struct {
@@ -51,7 +51,7 @@ func convertDomainTaskToModel(ctx context.Context, task *domain.Task) TaskModel 
 
 	return TaskModel{
 		AuthorizationID: types.StringPointerValue(task.AuthorizationID),
-		CreatedAt:       convertTimeToString(task.CreatedAt),
+		CreatedAt:       rfc3339PointerValue(task.CreatedAt),
 		Cron:            types.StringPointerValue(task.Cron),
 		Description:     types.StringPointerValue(task.Description),
 		Every:           types.StringPointerValue(task.Every),
@@ -60,7 +60,7 @@ func convertDomainTaskToModel(ctx context.Context, task *domain.Task) TaskModel 
 		Labels:          labelsList,
 		LastRunError:    types.StringPointerValue(task.LastRunError),
 		LastRunStatus:   convertTaskStatusToString(task.LastRunStatus),
-		LatestCompleted: convertTimeToString(task.LatestCompleted),
+		LatestCompleted: rfc3339PointerValue(task.LatestCompleted),
 		Links:           linksObject,
 		Name:            types.StringValue(task.Name),
 		Offset:          types.StringPointerValue(task.Offset),
@@ -68,7 +68,7 @@ func convertDomainTaskToModel(ctx context.Context, task *domain.Task) TaskModel 
 		OrgID:           types.StringValue(task.OrgID),
 		OwnerID:         types.StringPointerValue(task.OwnerID),
 		Status:          convertTaskStatusToString((*domain.TaskLastRunStatus)(task.Status)),
-		UpdatedAt:       convertTimeToString(task.UpdatedAt),
+		UpdatedAt:       rfc3339PointerValue(task.UpdatedAt),
 	}
 }
 
@@ -187,14 +187,6 @@ func convertLinksToObject(links *struct {
 func convertLinkToString(link *domain.Link) types.String {
 	if link != nil {
 		return types.StringValue(string(*link))
-	}
-	return types.StringNull()
-}
-
-// Helper function to convert time.Time to string.
-func convertTimeToString(t *time.Time) types.String {
-	if t != nil {
-		return types.StringValue(t.Format(time.RFC3339))
 	}
 	return types.StringNull()
 }

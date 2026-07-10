@@ -25,6 +25,6 @@ Creates and manages new organization.
 
 ### Read-Only
 
-- `created_at` (String) Organization creation date.
+- `created_at` (String) Organization creation date in RFC3339 format.
 - `id` (String) An organization ID.
-- `updated_at` (String) Last Organization update date.
+- `updated_at` (String) Last Organization update date in RFC3339 format.

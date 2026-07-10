@@ -75,7 +75,7 @@ resource "influxdb_task" "example_interval" {
 ### Read-Only
 
 - `authorization_id` (String) The authorization ID. Specifies the authorization used when the task communicates with the query engine.
-- `created_at` (String) The timestamp when the task was created.
+- `created_at` (String) The timestamp when the task was created, in RFC3339 format.
 - `cron` (String) The Cron expression that defines the schedule on which the task runs.
 - `description` (String) The description of the task.
 - `every` (String) The interval [duration literal](https://docs.influxdata.com/influxdb/v2/reference/glossary/#rfc3339-timestamp) at which the task runs. every also determines when the task first runs, depending on the specified time.
@@ -89,7 +89,7 @@ resource "influxdb_task" "example_interval" {
 - `offset` (String) The duration to delay execution of the task after the scheduled time has elapsed. 0 removes the offset.
 - `org` (String) The organization name. Specifies the organization that owns the task.
 - `owner_id` (String) The user ID. Specifies the owner of the task.
-- `updated_at` (String) The timestamp when the task was last updated.
+- `updated_at` (String) The timestamp when the task was last updated, in RFC3339 format.
 
 <a id="nestedatt--labels"></a>
 ### Nested Schema for `labels`

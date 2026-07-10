@@ -25,7 +25,7 @@ List all tasks.
 Read-Only:
 
 - `authorization_id` (String) The authorization ID. Specifies the authorization used when the task communicates with the query engine.
-- `created_at` (String) The timestamp when the task was created.
+- `created_at` (String) The timestamp when the task was created, in RFC3339 format.
 - `cron` (String) The Cron expression that defines the schedule on which the task runs. InfluxDB uses the system time when evaluating Cron expressions.
 - `description` (String) The description of the task.
 - `every` (String) The interval [duration literal](https://docs.influxdata.com/influxdb/v2/reference/glossary/#rfc3339-timestamp) at which the task runs. every also determines when the task first runs, depending on the specified time.
@@ -42,7 +42,7 @@ Read-Only:
 - `org_id` (String) The organization ID. Specifies the organization that owns the task.
 - `owner_id` (String) The user ID. Specifies the owner of the task.
 - `status` (String) The status of the task (`active` or `inactive`).
-- `updated_at` (String) The timestamp when the task was last updated.
+- `updated_at` (String) The timestamp when the task was last updated, in RFC3339 format.
 
 <a id="nestedatt--tasks--labels"></a>
 ### Nested Schema for `tasks.labels`

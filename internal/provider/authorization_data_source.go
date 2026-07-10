@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -74,15 +74,17 @@ func (d *AuthorizationDataSource) Schema(ctx context.Context, req datasource.Sch
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Authorization creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Authorization creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last Authorization update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last Authorization update date in RFC3339 format.",
 			},
-			"permissions": schema.ListNestedAttribute{
+			"permissions": schema.SetNestedAttribute{
 				Computed:    true,
-				Description: "A list of permissions for an authorization.",
+				Description: "A set of permissions for an authorization.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"action": schema.StringAttribute{
@@ -123,22 +125,9 @@ func (d *AuthorizationDataSource) Schema(ctx context.Context, req datasource.Sch
 
 // Configure adds the provider configured client to the data source.
 func (d *AuthorizationDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -154,7 +143,7 @@ func (d *AuthorizationDataSource) Read(ctx context.Context, req datasource.ReadR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error getting Authorizations",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -163,7 +152,7 @@ func (d *AuthorizationDataSource) Read(ctx context.Context, req datasource.ReadR
 	var authorization *domain.Authorization = nil
 	for _, auth := range *readAuthorization {
 		v := auth
-		if *auth.Id == *state.Id.ValueStringPointer() {
+		if v.Id != nil && *v.Id == state.Id.ValueString() {
 			authorization = &v
 			break
 		}
@@ -172,38 +161,21 @@ func (d *AuthorizationDataSource) Read(ctx context.Context, req datasource.ReadR
 	if authorization == nil {
 		resp.Diagnostics.AddError(
 			"Authorization not found",
-			"Authorization not found",
+			"No authorization with ID "+state.Id.ValueString()+" exists.",
 		)
 
 		return
 	}
 
 	// Map response body to model
-	for _, permissionData := range *authorization.Permissions {
-		permissionState := AuthorizationPermissionModel{
-			Action: types.StringValue(string(permissionData.Action)),
-			Resource: AuthorizationPermissionResourceModel{
-				Id:    types.StringPointerValue(permissionData.Resource.Id),
-				Name:  types.StringPointerValue(permissionData.Resource.Name),
-				Org:   types.StringPointerValue(permissionData.Resource.Org),
-				OrgID: types.StringPointerValue(permissionData.Resource.OrgID),
-				Type:  types.StringValue(string(permissionData.Resource.Type)),
-			},
-		}
-
-		state.Permissions = append(state.Permissions, permissionState)
-	}
-
-	state.Id = types.StringPointerValue(authorization.Id)
-	state.Org = types.StringPointerValue(authorization.Org)
-	state.OrgID = types.StringPointerValue(authorization.OrgID)
+	populateAuthorizationModel(&state, authorization)
 	state.Token = types.StringPointerValue(authorization.Token)
-	state.CreatedAt = types.StringValue(authorization.CreatedAt.String())
-	state.UpdatedAt = types.StringValue(authorization.UpdatedAt.String())
-	state.Description = types.StringValue(*authorization.Description)
-	state.Status = types.StringValue(string(*authorization.Status))
-	state.User = types.StringPointerValue(authorization.User)
-	state.UserID = types.StringPointerValue(authorization.UserID)
+
+	if authorization.Status != nil {
+		state.Status = types.StringValue(string(*authorization.Status))
+	} else {
+		state.Status = types.StringNull()
+	}
 
 	// Set state
 	diags := resp.State.Set(ctx, &state)
