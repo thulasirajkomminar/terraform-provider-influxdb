@@ -2,11 +2,10 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -60,11 +59,13 @@ func (d *BucketDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Bucket creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Bucket creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last bucket update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last bucket update date in RFC3339 format.",
 			},
 			"retention_period": schema.Int64Attribute{
 				Computed:    true,
@@ -76,22 +77,9 @@ func (d *BucketDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 
 // Configure adds the provider configured client to the data source.
 func (d *BucketDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -116,24 +104,15 @@ func (d *BucketDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	bucket, err := d.client.BucketsAPI().FindBucketByName(ctx, bucketName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Bucket not found",
-			err.Error(),
+			"Error getting bucket",
+			formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to model
-	state = BucketModel{
-		Id:              types.StringPointerValue(bucket.Id),
-		OrgID:           types.StringPointerValue(bucket.OrgID),
-		Type:            types.StringValue(string(*bucket.Type)),
-		Description:     types.StringPointerValue(bucket.Description),
-		Name:            types.StringValue(bucket.Name),
-		CreatedAt:       types.StringValue(bucket.CreatedAt.String()),
-		UpdatedAt:       types.StringValue(bucket.UpdatedAt.String()),
-		RetentionPeriod: types.Int64Value(bucket.RetentionRules[0].EverySeconds),
-	}
+	populateBucketModel(&state, bucket)
 
 	// Set state
 	diags := resp.State.Set(ctx, &state)

@@ -4,7 +4,7 @@ Terraform provider to manage InfluxDB.
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.20
+- [Go](https://golang.org/doc/install) >= 1.26 (to build the provider plugin)
 
 ## Building The Provider
 
@@ -65,6 +65,19 @@ provider "influxdb" {
 }
 ```
 
+#### Environment variables
+
+Every provider attribute can also be set via an environment variable: `INFLUXDB_URL` (the server URL, trailing slashes are ignored), `INFLUXDB_TOKEN`, `INFLUXDB_USERNAME`, and `INFLUXDB_PASSWORD`. Values set in the provider configuration take precedence.
+
+```shell
+export INFLUXDB_URL="http://localhost:8086"
+export INFLUXDB_TOKEN="influxdb-token"
+```
+
+```terraform
+provider "influxdb" {}
+```
+
 ## Supported InfluxDB flavours
 
 ### v3
@@ -80,18 +93,39 @@ provider "influxdb" {
 
 ### Data Sources
 
-* `influxdb_authorization`
-* `influxdb_authorizations`
-* `influxdb_bucket`
-* `influxdb_buckets`
-* `influxdb_organization`
-* `influxdb_organizations`
+- `influxdb_authorization`
+- `influxdb_authorizations`
+- `influxdb_bucket`
+- `influxdb_buckets`
+- `influxdb_label`
+- `influxdb_labels`
+- `influxdb_organization`
+- `influxdb_organizations`
+- `influxdb_task`
+- `influxdb_tasks`
+- `influxdb_user`
+- `influxdb_users`
+- `influxdb_variable`
+- `influxdb_variables`
 
 ### Resources
 
-* `influxdb_authorization`
-* `influxdb_bucket`
-* `influxdb_organization`
+- `influxdb_authorization`
+- `influxdb_bucket`
+- `influxdb_label`
+- `influxdb_organization`
+- `influxdb_secret`
+- `influxdb_task`
+- `influxdb_user`
+- `influxdb_variable`
+
+## Debugging
+
+Run Terraform with [`TF_LOG=DEBUG`](https://developer.hashicorp.com/terraform/internals/debugging) (or `TF_LOG_PROVIDER=DEBUG`) to log every HTTP request and response the provider exchanges with the InfluxDB API. Credentials never appear in these logs: the `Authorization` header is added below the logging layer, and configured tokens and passwords are masked (`***`) wherever they would otherwise appear, including sign-in headers, session cookies, and response bodies.
+
+```shell
+TF_LOG=DEBUG terraform plan
+```
 
 ## Developing the Provider
 

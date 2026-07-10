@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -82,15 +82,17 @@ func (d *AuthorizationsDataSource) Schema(ctx context.Context, req datasource.Sc
 						},
 						"created_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Authorizations creation date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Authorization creation date in RFC3339 format.",
 						},
 						"updated_at": schema.StringAttribute{
 							Computed:    true,
-							Description: "Last Authorizations update date.",
+							CustomType:  timetypes.RFC3339Type{},
+							Description: "Last Authorization update date in RFC3339 format.",
 						},
-						"permissions": schema.ListNestedAttribute{
+						"permissions": schema.SetNestedAttribute{
 							Computed:    true,
-							Description: "A list of permissions for an authorization.",
+							Description: "A set of permissions for an authorization.",
 							NestedObject: schema.NestedAttributeObject{
 								Attributes: map[string]schema.Attribute{
 									"action": schema.StringAttribute{
@@ -134,22 +136,9 @@ func (d *AuthorizationsDataSource) Schema(ctx context.Context, req datasource.Sc
 
 // Configure adds the provider configured client to the data source.
 func (d *AuthorizationsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -164,8 +153,8 @@ func (d *AuthorizationsDataSource) Read(ctx context.Context, req datasource.Read
 	readAuthorizations, err := d.client.AuthorizationsAPI().GetAuthorizations(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error getting Authorizationss",
-			err.Error(),
+			"Error getting Authorizations",
+			formatAPIError(err),
 		)
 
 		return
@@ -173,34 +162,14 @@ func (d *AuthorizationsDataSource) Read(ctx context.Context, req datasource.Read
 
 	// Map response body to model
 	for _, authorization := range *readAuthorizations {
-		var permissionsState []AuthorizationPermissionModel
-		for _, permissionData := range *authorization.Permissions {
-			permissionState := AuthorizationPermissionModel{
-				Action: types.StringValue(string(permissionData.Action)),
-				Resource: AuthorizationPermissionResourceModel{
-					Id:    types.StringPointerValue(permissionData.Resource.Id),
-					Name:  types.StringPointerValue(permissionData.Resource.Name),
-					Org:   types.StringPointerValue(permissionData.Resource.Org),
-					OrgID: types.StringPointerValue(permissionData.Resource.OrgID),
-					Type:  types.StringValue(string(permissionData.Resource.Type)),
-				},
-			}
+		var authorizationState AuthorizationModel
+		populateAuthorizationModel(&authorizationState, &authorization)
+		authorizationState.Token = types.StringPointerValue(authorization.Token)
 
-			permissionsState = append(permissionsState, permissionState)
-		}
-
-		authorizationState := AuthorizationModel{
-			Id:          types.StringPointerValue(authorization.Id),
-			Org:         types.StringPointerValue(authorization.Org),
-			OrgID:       types.StringPointerValue(authorization.OrgID),
-			Token:       types.StringPointerValue(authorization.Token),
-			CreatedAt:   types.StringValue(authorization.CreatedAt.String()),
-			UpdatedAt:   types.StringValue(authorization.UpdatedAt.String()),
-			Description: types.StringValue(*authorization.Description),
-			Status:      types.StringValue(string(*authorization.Status)),
-			Permissions: permissionsState,
-			User:        types.StringPointerValue(authorization.User),
-			UserID:      types.StringPointerValue(authorization.UserID),
+		if authorization.Status != nil {
+			authorizationState.Status = types.StringValue(string(*authorization.Status))
+		} else {
+			authorizationState.Status = types.StringNull()
 		}
 
 		state.Authorizations = append(state.Authorizations, authorizationState)

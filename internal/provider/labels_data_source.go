@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -73,22 +72,9 @@ func (d *LabelsDataSource) Schema(ctx context.Context, req datasource.SchemaRequ
 
 // Configure adds the provider configured client to the data source.
 func (d *LabelsDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -99,7 +85,7 @@ func (d *LabelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to list labels",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -115,9 +101,9 @@ func (d *LabelsDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		}
 
 		labelState := LabelModel{
-			Id:         types.StringValue(*label.Id),
-			Name:       types.StringValue(*label.Name),
-			OrgID:      types.StringValue(*label.OrgID),
+			Id:         types.StringPointerValue(label.Id),
+			Name:       types.StringPointerValue(label.Name),
+			OrgID:      types.StringPointerValue(label.OrgID),
 			Properties: propertiesMap,
 		}
 

@@ -2,7 +2,10 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -46,20 +49,20 @@ func (p *InfluxDBProvider) Schema(ctx context.Context, req provider.SchemaReques
 
 		Attributes: map[string]schema.Attribute{
 			"url": schema.StringAttribute{
-				Description: "The InfluxDB server URL",
+				Description: "The InfluxDB server URL, e.g. `http://localhost:8086`. Trailing slashes are ignored. Can also be set with the `INFLUXDB_URL` environment variable.",
 				Optional:    true,
 			},
 			"token": schema.StringAttribute{
-				Description: "An InfluxDB token string",
+				Description: "An InfluxDB API token string. Can also be set with the `INFLUXDB_TOKEN` environment variable.",
 				Optional:    true,
 				Sensitive:   true,
 			},
 			"username": schema.StringAttribute{
-				Description: "The InfluxDB username",
+				Description: "The InfluxDB username, used together with `password` when no token is configured. Can also be set with the `INFLUXDB_USERNAME` environment variable.",
 				Optional:    true,
 			},
 			"password": schema.StringAttribute{
-				Description: "The InfluxDB password",
+				Description: "The InfluxDB password, used together with `username` when no token is configured. Can also be set with the `INFLUXDB_PASSWORD` environment variable.",
 				Optional:    true,
 				Sensitive:   true,
 			},
@@ -103,7 +106,7 @@ func (p *InfluxDBProvider) Configure(ctx context.Context, req provider.Configure
 			path.Root("username"),
 			"Unknown InfluxDB Username",
 			"The provider cannot create the InfluxDB client as there is an unknown configuration value for the InfluxDB Username. "+
-				"Either target apply the source of the value first or set the value statically in the configuration.",
+				"Either target apply the source of the value first, set the value statically in the configuration, or use the INFLUXDB_USERNAME environment variable.",
 		)
 	}
 
@@ -112,7 +115,7 @@ func (p *InfluxDBProvider) Configure(ctx context.Context, req provider.Configure
 			path.Root("password"),
 			"Unknown InfluxDB Password",
 			"The provider cannot create the InfluxDB client as there is an unknown configuration value for the InfluxDB Password. "+
-				"Either target apply the source of the value first or set the value statically in the configuration.",
+				"Either target apply the source of the value first, set the value statically in the configuration, or use the INFLUXDB_PASSWORD environment variable.",
 		)
 	}
 
@@ -144,6 +147,10 @@ func (p *InfluxDBProvider) Configure(ctx context.Context, req provider.Configure
 		password = config.Password.ValueString()
 	}
 
+	// The InfluxDB client appends "api/v2/" to the URL, so normalize away
+	// trailing slashes to avoid doubled separators.
+	url = strings.TrimRight(url, "/")
+
 	// If any of the expected configurations are missing, return
 	// errors with provider-specific guidance.
 
@@ -170,24 +177,26 @@ func (p *InfluxDBProvider) Configure(ctx context.Context, req provider.Configure
 			"The provider cannot create the InfluxDB client as the authentication credentials are missing or empty.\n\n"+
 				"Choose one of the following authentication methods:\n"+
 				"• Token authentication: Set 'token' in configuration or use INFLUXDB_TOKEN environment variable.\n"+
-				"• Password authentication: Set both 'username' and 'password' in configuration or use INFLUXDB_USERNAME & INFLUXDB_PASSWORD environment variable.",
+				"• Password authentication: Set both 'username' and 'password' in configuration or use INFLUXDB_USERNAME & INFLUXDB_PASSWORD environment variables.",
 		)
 	} else if !hasToken && !hasCompleteUsernamePassword {
 		// Partial username/password credentials provided
 		if !hasUsername {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("username"),
-				"Incomplete InfluxDB Authentication",
+				"Missing InfluxDB Username",
 				"Username is required when using username and password authentication. "+
-					"Provide both username and password, or use token authentication instead.",
+					"Set 'username' in the configuration or use the INFLUXDB_USERNAME environment variable, "+
+					"or use token authentication instead.",
 			)
 		}
 		if !hasPassword {
 			resp.Diagnostics.AddAttributeError(
 				path.Root("password"),
-				"Incomplete InfluxDB Authentication",
+				"Missing InfluxDB Password",
 				"Password is required when using username and password authentication. "+
-					"Provide both username and password, or use token authentication instead.",
+					"Set 'password' in the configuration or use the INFLUXDB_PASSWORD environment variable, "+
+					"or use token authentication instead.",
 			)
 		}
 	}
@@ -196,48 +205,60 @@ func (p *InfluxDBProvider) Configure(ctx context.Context, req provider.Configure
 		return
 	}
 
-	ctx = tflog.SetField(ctx, "INFLUXDB_URL", url)
-	ctx = tflog.SetField(ctx, "INFLUXDB_TOKEN", token)
-	ctx = tflog.SetField(ctx, "INFLUXDB_USERNAME", username)
-	ctx = tflog.SetField(ctx, "INFLUXDB_PASSWORD", password)
-	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "INFLUXDB_TOKEN")
-	ctx = tflog.MaskFieldValuesWithFieldKeys(ctx, "INFLUXDB_PASSWORD")
+	// Build the masking rules for HTTP debug logging. Credentials must never
+	// reach the logs, even when they appear in headers set above the logging
+	// transport (Basic sign-in, session cookies) or in response bodies.
+	var maskRegexes []*regexp.Regexp
 
-	tflog.Debug(ctx, "Creating InfluxDB client")
+	if hasToken {
+		maskRegexes = append(maskRegexes, regexp.MustCompile(regexp.QuoteMeta(token)))
+	}
+	if hasPassword {
+		maskRegexes = append(maskRegexes, regexp.MustCompile(regexp.QuoteMeta(password)))
+	}
+	if hasCompleteUsernamePassword {
+		basicCredentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+		maskRegexes = append(maskRegexes, regexp.MustCompile(regexp.QuoteMeta(basicCredentials)))
+	}
+	// Session cookies issued by /api/v2/signin.
+	maskRegexes = append(maskRegexes, regexp.MustCompile(`influxdb-oss-session=[^;,\s]+`))
+
+	// The token is injected by the authorization round tripper below the
+	// logging transport, so the client itself is created without a token and
+	// the Authorization header never reaches the debug logs.
+	authorization := ""
+	if hasToken {
+		authorization = "Token " + token
+	}
+
+	options := influxdb2.DefaultOptions().SetHTTPClient(newHTTPClient(authorization, maskRegexes))
+
+	tflog.Debug(ctx, "Creating InfluxDB client", map[string]any{"url": url})
 
 	// Create a new InfluxDB client using the configuration values
 	// Token authentication takes priority over username/password
-	var client influxdb2.Client
+	client := influxdb2.NewClientWithOptions(url, "", options)
 
-	if token != "" {
-		// Use token authentication (priority)
-		client = influxdb2.NewClient(url, token)
-	} else {
+	if !hasToken {
 		// Use username/password authentication (fallback)
-		client = influxdb2.NewClientWithOptions(
-			url,
-			"",
-			influxdb2.DefaultOptions(),
-		)
-
-		err := client.UsersAPI().SignIn(context.Background(), username, password)
+		err := client.UsersAPI().SignIn(ctx, username, password)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Unable to Create InfluxDB Client",
 				"Failed to signin with username and password to InfluxDB.\n\n"+
-					"InfluxDB Client Error: "+err.Error(),
+					"InfluxDB Client Error: "+formatAPIError(err),
 			)
 			return
 		}
 	}
 
-	_, err := client.Ping(context.Background())
+	_, err := client.Ping(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Create InfluxDB Client",
 			"An unexpected error occurred when creating the InfluxDB client. "+
 				"If the error is not clear, please contact the provider developers.\n\n"+
-				"InfluxDB Client Error: "+err.Error(),
+				"InfluxDB Client Error: "+formatAPIError(err),
 		)
 		return
 	}
@@ -257,8 +278,10 @@ func (p *InfluxDBProvider) Resources(ctx context.Context) []func() resource.Reso
 		NewBucketResource,
 		NewLabelResource,
 		NewOrganizationResource,
+		NewSecretResource,
 		NewTaskResource,
 		NewUserResource,
+		NewVariableResource,
 	}
 }
 
@@ -277,6 +300,8 @@ func (p *InfluxDBProvider) DataSources(ctx context.Context) []func() datasource.
 		NewTasksDataSource,
 		NewUserDataSource,
 		NewUsersDataSource,
+		NewVariableDataSource,
+		NewVariablesDataSource,
 	}
 }
 

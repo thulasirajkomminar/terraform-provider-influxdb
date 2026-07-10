@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -17,7 +16,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_ resource.Resource                = &LabelResource{}
-	_ resource.ResourceWithImportState = &LabelResource{}
+	_ resource.ResourceWithConfigure   = &LabelResource{}
 	_ resource.ResourceWithImportState = &LabelResource{}
 )
 
@@ -100,7 +99,7 @@ func (r *LabelResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating label",
-			"Could not create label, unexpected error: "+err.Error(),
+			"Could not create label, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -139,9 +138,17 @@ func (r *LabelResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	// Get refreshed label value from InfluxDB
 	label, err := r.client.LabelsAPI().FindLabelByID(ctx, state.Id.ValueString())
 	if err != nil {
+		// The label was deleted outside of Terraform: remove it from state
+		// so Terraform plans a re-create.
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		resp.Diagnostics.AddError(
-			"Label not found",
-			err.Error(),
+			"Error getting label",
+			formatAPIError(err),
 		)
 
 		return
@@ -156,9 +163,9 @@ func (r *LabelResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 
 	state = LabelModel{
-		Id:         types.StringValue(*label.Id),
-		Name:       types.StringValue(*label.Name),
-		OrgID:      types.StringValue(*label.OrgID),
+		Id:         types.StringPointerValue(label.Id),
+		Name:       types.StringPointerValue(label.Name),
+		OrgID:      types.StringPointerValue(label.OrgID),
 		Properties: propertiesMap,
 	}
 
@@ -228,7 +235,7 @@ func (r *LabelResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating label",
-			"Could not update label, unexpected error: "+err.Error(),
+			"Could not update label, unexpected error: "+formatAPIError(err),
 		)
 		return
 	}
@@ -270,11 +277,11 @@ func (r *LabelResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	}
 
 	// Delete existing label
-	err := r.client.LabelsAPI().DeleteLabelWithID(ctx, *state.Id.ValueStringPointer())
-	if err != nil {
+	err := r.client.LabelsAPI().DeleteLabelWithID(ctx, state.Id.ValueString())
+	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting label",
-			"Could not delete label, unexpected error: "+err.Error(),
+			"Could not delete label, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -283,22 +290,9 @@ func (r *LabelResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 
 // Configure adds the provider configured client to the resource.
 func (r *LabelResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *LabelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

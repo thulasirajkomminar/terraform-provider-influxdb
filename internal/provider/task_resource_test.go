@@ -33,6 +33,11 @@ func TestAccTaskResource(t *testing.T) {
 					resource.TestCheckResourceAttrSet("influxdb_task.test_every", "created_at"),
 				),
 			},
+			// ImportState testing
+			{
+				ResourceName: "influxdb_task.test_every",
+				ImportState:  true,
+			},
 		},
 	})
 }

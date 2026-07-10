@@ -39,6 +39,60 @@ func TestAccAuthorizationResource(t *testing.T) {
 	})
 }
 
+// TestAccAuthorizationResourcePermissionOrder verifies that permissions are
+// set-typed: reordering the permission blocks in the configuration must not
+// produce a diff.
+func TestAccAuthorizationResourcePermissionOrder(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: providerConfig + testAccAuthorizationResourceOrderedConfig("read", "write"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("influxdb_authorization.test", "permissions.#", "2"),
+				),
+			},
+			// The same permissions in reverse order must plan clean.
+			{
+				Config:   providerConfig + testAccAuthorizationResourceOrderedConfig("write", "read"),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+func testAccAuthorizationResourceOrderedConfig(firstAction, secondAction string) string {
+	return fmt.Sprintf(`
+resource "influxdb_bucket" "test" {
+	name = "test-permission-order"
+	org_id = "`+os.Getenv("INFLUXDB_ORG_ID")+`"
+  }
+
+resource "influxdb_authorization" "test" {
+	org_id      = "`+os.Getenv("INFLUXDB_ORG_ID")+`"
+	description = "permission order test"
+
+	permissions = [{
+	  action = %[1]q
+	  resource = {
+	  	org_id = "`+os.Getenv("INFLUXDB_ORG_ID")+`"
+		id     = influxdb_bucket.test.id
+		type   = "buckets"
+	  }
+	  },
+	  {
+		action = %[2]q
+		resource = {
+		  org_id = "`+os.Getenv("INFLUXDB_ORG_ID")+`"
+		  id     = influxdb_bucket.test.id
+		  type   = "buckets"
+		}
+	}]
+  }
+`, firstAction, secondAction)
+}
+
 func testAccAuthorizationResourceConfig(description string) string {
 	return fmt.Sprintf(`
 resource "influxdb_bucket" "test" {

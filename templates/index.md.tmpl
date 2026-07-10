@@ -42,7 +42,16 @@ When both authentication methods are provided, **token authentication takes prio
 
 ## Environment Variables
 
-Credentials can be provided by using the `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_USERNAME`, and `INFLUXDB_PASSWORD`.
+Every provider attribute can also be provided via an environment variable:
+
+| Attribute  | Environment variable | Description                                                    |
+|------------|----------------------|----------------------------------------------------------------|
+| `url`      | `INFLUXDB_URL`       | The InfluxDB server URL. Trailing slashes are ignored.         |
+| `token`    | `INFLUXDB_TOKEN`     | An InfluxDB API token.                                         |
+| `username` | `INFLUXDB_USERNAME`  | The InfluxDB username (used together with `password`).         |
+| `password` | `INFLUXDB_PASSWORD`  | The InfluxDB password (used together with `username`).         |
+
+Values set in the provider configuration take precedence over environment variables.
 
 ### Example
 
@@ -68,5 +77,19 @@ provider "influxdb" {}
 
 terraform plan
 ```
+
+## Debugging
+
+Setting [`TF_LOG=DEBUG`](https://developer.hashicorp.com/terraform/internals/debugging) (or `TF_LOG_PROVIDER=DEBUG`) makes the provider log every HTTP request and response it exchanges with the InfluxDB API, including URLs, headers, and bodies:
+
+```shell
+export TF_LOG=DEBUG
+terraform plan
+```
+
+Credentials are never written to these logs:
+
+* The `Authorization` header is injected below the logging layer, so it does not appear in logged request headers.
+* Configured tokens and passwords are masked (replaced with `***`) wherever they would otherwise appear, including sign-in headers, session cookies, and response bodies.
 
 {{ .SchemaMarkdown | trimspace }}

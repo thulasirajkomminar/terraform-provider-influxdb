@@ -2,11 +2,10 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 )
 
@@ -52,11 +51,13 @@ func (d *OrganizationDataSource) Schema(ctx context.Context, req datasource.Sche
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Organization creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Organization creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last Organization update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last Organization update date in RFC3339 format.",
 			},
 		},
 	}
@@ -64,22 +65,9 @@ func (d *OrganizationDataSource) Schema(ctx context.Context, req datasource.Sche
 
 // Configure adds the provider configured client to the data source.
 func (d *OrganizationDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureDataSourceClient(req, resp); client != nil {
+		d.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	d.client = client
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -104,21 +92,15 @@ func (d *OrganizationDataSource) Read(ctx context.Context, req datasource.ReadRe
 	organization, err := d.client.OrganizationsAPI().FindOrganizationByName(ctx, orgName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"Organization not found",
-			err.Error(),
+			"Error getting organization",
+			formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to model
-	state = OrganizationModel{
-		Id:          types.StringPointerValue(organization.Id),
-		Name:        types.StringValue(organization.Name),
-		Description: types.StringPointerValue(organization.Description),
-		CreatedAt:   types.StringValue(organization.CreatedAt.String()),
-		UpdatedAt:   types.StringValue(organization.UpdatedAt.String()),
-	}
+	populateOrganizationModel(&state, organization)
 
 	// Set state
 	diags := resp.State.Set(ctx, &state)

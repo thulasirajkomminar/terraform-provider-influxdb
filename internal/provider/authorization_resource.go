@@ -2,14 +2,14 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -20,9 +20,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &AuthorizationResource{}
-	_ resource.ResourceWithImportState = &AuthorizationResource{}
-	_ resource.ResourceWithImportState = &AuthorizationResource{}
+	_ resource.Resource                 = &AuthorizationResource{}
+	_ resource.ResourceWithConfigure    = &AuthorizationResource{}
+	_ resource.ResourceWithImportState  = &AuthorizationResource{}
+	_ resource.ResourceWithUpgradeState = &AuthorizationResource{}
 )
 
 // NewAuthorizationResource is a helper function to simplify the provider implementation.
@@ -45,6 +46,9 @@ func (r *AuthorizationResource) Schema(ctx context.Context, req resource.SchemaR
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		Description: "Creates and manages an authorization and returns the authorization with the generated API token. Use this resource to create/manage an authorization, which generates an API token with permissions to read or write to a specific resource or type of resource.",
+
+		// Version 1 stores timestamps as RFC3339 and permissions as a set.
+		Version: 1,
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -101,17 +105,19 @@ func (r *AuthorizationResource) Schema(ctx context.Context, req resource.SchemaR
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Authorization creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Authorization creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last Authorization update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last Authorization update date in RFC3339 format.",
 			},
-			"permissions": schema.ListNestedAttribute{
+			"permissions": schema.SetNestedAttribute{
 				Required:    true,
-				Description: "A list of permissions for an authorization.",
-				PlanModifiers: []planmodifier.List{
-					listplanmodifier.RequiresReplace(),
+				Description: "A set of permissions for an authorization. The order of the permissions is not significant.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.RequiresReplace(),
 				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -192,6 +198,15 @@ func (r *AuthorizationResource) Schema(ctx context.Context, req resource.SchemaR
 	}
 }
 
+// UpgradeState migrates state written by prior provider versions: timestamps
+// move from Go's time.Time.String() format to RFC3339. The permissions
+// list-to-set change needs no value rewrite.
+func (r *AuthorizationResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: timestampStateUpgrader("created_at", "updated_at"),
+	}
+}
+
 // Create creates the resource and sets the initial Terraform state.
 func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan AuthorizationModel
@@ -203,21 +218,7 @@ func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	// Generate API request body from plan
-	var permissions []domain.Permission
-	for _, permissionData := range plan.Permissions {
-		permission := domain.Permission{
-			Action: domain.PermissionAction(permissionData.Action.ValueString()),
-			Resource: domain.Resource{
-				Id:    permissionData.Resource.Id.ValueStringPointer(),
-				Name:  permissionData.Resource.Name.ValueStringPointer(),
-				Type:  domain.ResourceType(permissionData.Resource.Type.ValueString()),
-				Org:   permissionData.Resource.Org.ValueStringPointer(),
-				OrgID: permissionData.Resource.OrgID.ValueStringPointer(),
-			},
-		}
-
-		permissions = append(permissions, permission)
-	}
+	permissions := buildPermissions(plan.Permissions)
 
 	createAuthorization := domain.Authorization{
 		OrgID:       plan.OrgID.ValueStringPointer(),
@@ -235,23 +236,15 @@ func (r *AuthorizationResource) Create(ctx context.Context, req resource.CreateR
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating authorization",
-			"Could not create authorization, unexpected error: "+err.Error(),
+			"Could not create authorization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.Org = types.StringPointerValue(apiResponse.Org)
-	plan.OrgID = types.StringPointerValue(apiResponse.OrgID)
+	populateAuthorizationModel(&plan, apiResponse)
 	plan.Token = types.StringPointerValue(apiResponse.Token)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.Description = types.StringValue(*apiResponse.Description)
-	plan.Permissions = getPermissions(*apiResponse.Permissions)
-	plan.User = types.StringPointerValue(apiResponse.User)
-	plan.UserID = types.StringPointerValue(apiResponse.UserID)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -276,7 +269,7 @@ func (r *AuthorizationResource) Read(ctx context.Context, req resource.ReadReque
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error getting Authorizations",
-			err.Error(),
+			formatAPIError(err),
 		)
 
 		return
@@ -285,32 +278,28 @@ func (r *AuthorizationResource) Read(ctx context.Context, req resource.ReadReque
 	var authorization *domain.Authorization = nil
 	for _, auth := range *readAuthorization {
 		v := auth
-		if *auth.Id == *state.Id.ValueStringPointer() {
+		if v.Id != nil && *v.Id == state.Id.ValueString() {
 			authorization = &v
 			break
 		}
 	}
 
+	// The authorization was deleted outside of Terraform: remove it from
+	// state so Terraform plans a re-create.
 	if authorization == nil {
-		resp.Diagnostics.AddError(
-			"Authorization not found",
-			"Authorization not found",
-		)
+		resp.State.RemoveResource(ctx)
 
 		return
 	}
 
 	// Overwrite items with refreshed state
-	state.Id = types.StringPointerValue(authorization.Id)
-	state.Org = types.StringPointerValue(authorization.Org)
-	state.OrgID = types.StringPointerValue(authorization.OrgID)
-	state.CreatedAt = types.StringValue(authorization.CreatedAt.String())
-	state.UpdatedAt = types.StringValue(authorization.UpdatedAt.String())
-	state.Description = types.StringValue(*authorization.Description)
-	state.Status = types.StringValue(string(*authorization.Status))
-	state.Permissions = getPermissions(*authorization.Permissions)
-	state.User = types.StringPointerValue(authorization.User)
-	state.UserID = types.StringPointerValue(authorization.UserID)
+	populateAuthorizationModel(&state, authorization)
+
+	if authorization.Status != nil {
+		state.Status = types.StringValue(string(*authorization.Status))
+	} else {
+		state.Status = types.StringNull()
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -338,27 +327,22 @@ func (r *AuthorizationResource) Update(ctx context.Context, req resource.UpdateR
 	}
 
 	// Update existing authorization
-	apiResponse, err := r.client.AuthorizationsAPI().UpdateAuthorizationStatusWithID(ctx, *plan.Id.ValueStringPointer(), status)
+	apiResponse, err := r.client.AuthorizationsAPI().UpdateAuthorizationStatusWithID(ctx, plan.Id.ValueString(), status)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating authorization",
-			"Could not update authorization, unexpected error: "+err.Error(),
+			"Could not update authorization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Overwrite items with refreshed state
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.Org = types.StringPointerValue(apiResponse.Org)
-	plan.OrgID = types.StringPointerValue(apiResponse.OrgID)
-	plan.Token = types.StringPointerValue(apiResponse.Token)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
-	plan.Description = types.StringValue(*apiResponse.Description)
-	plan.Permissions = getPermissions(*apiResponse.Permissions)
-	plan.User = types.StringPointerValue(apiResponse.User)
-	plan.UserID = types.StringPointerValue(apiResponse.UserID)
+	populateAuthorizationModel(&plan, apiResponse)
+
+	if apiResponse.Token != nil {
+		plan.Token = types.StringPointerValue(apiResponse.Token)
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -378,11 +362,11 @@ func (r *AuthorizationResource) Delete(ctx context.Context, req resource.DeleteR
 	}
 
 	// Delete existing authorization
-	err := r.client.AuthorizationsAPI().DeleteAuthorizationWithID(ctx, *state.Id.ValueStringPointer())
-	if err != nil {
+	err := r.client.AuthorizationsAPI().DeleteAuthorizationWithID(ctx, state.Id.ValueString())
+	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting authorization",
-			"Could not delete authorization, unexpected error: "+err.Error(),
+			"Could not delete authorization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -391,44 +375,11 @@ func (r *AuthorizationResource) Delete(ctx context.Context, req resource.DeleteR
 
 // Configure adds the provider configured client to the resource.
 func (r *AuthorizationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *AuthorizationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func getPermissions(permissions []domain.Permission) []AuthorizationPermissionModel {
-	permissionsState := []AuthorizationPermissionModel{}
-	for _, permission := range permissions {
-		permissionState := AuthorizationPermissionModel{
-			Action: types.StringValue(string(permission.Action)),
-			Resource: AuthorizationPermissionResourceModel{
-				Id:    types.StringPointerValue(permission.Resource.Id),
-				Name:  types.StringPointerValue(permission.Resource.Name),
-				Type:  types.StringValue(string(permission.Resource.Type)),
-				OrgID: types.StringPointerValue(permission.Resource.OrgID),
-				Org:   types.StringPointerValue(permission.Resource.Org),
-			},
-		}
-
-		permissionsState = append(permissionsState, permissionState)
-	}
-
-	return permissionsState
 }

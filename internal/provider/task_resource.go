@@ -2,8 +2,8 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -18,7 +18,7 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_ resource.Resource                = &TaskResource{}
-	_ resource.ResourceWithImportState = &TaskResource{}
+	_ resource.ResourceWithConfigure   = &TaskResource{}
 	_ resource.ResourceWithImportState = &TaskResource{}
 )
 
@@ -50,7 +50,8 @@ func (r *TaskResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "The timestamp when the task was created.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "The timestamp when the task was created, in RFC3339 format.",
 			},
 			"cron": schema.StringAttribute{
 				Computed:    true,
@@ -107,6 +108,7 @@ func (r *TaskResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"latest_completed": schema.StringAttribute{
 				Computed:    true,
+				CustomType:  timetypes.RFC3339Type{},
 				Description: "A timestamp [RFC3339 date/time format](https://docs.influxdata.com/influxdb/v2/reference/glossary/#rfc3339-timestamp) of the latest scheduled and completed run.",
 			},
 			"links": schema.SingleNestedAttribute{
@@ -170,7 +172,8 @@ func (r *TaskResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "The timestamp when the task was last updated.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "The timestamp when the task was last updated, in RFC3339 format.",
 			},
 		},
 	}
@@ -191,7 +194,7 @@ func (r *TaskResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating task",
-			"Could not create task, unexpected error: "+err.Error(),
+			"Could not create task, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -220,9 +223,17 @@ func (r *TaskResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	// Get all task using FindTask with empty filter
 	task, err := r.client.TasksAPI().GetTaskByID(ctx, state.Id.ValueString())
 	if err != nil {
+		// The task was deleted outside of Terraform: remove it from state so
+		// Terraform plans a re-create.
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		resp.Diagnostics.AddError(
-			"Task not found",
-			err.Error(),
+			"Error getting task",
+			formatAPIError(err),
 		)
 		return
 	}
@@ -271,7 +282,7 @@ func (r *TaskResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating task",
-			"Could not update task, unexpected error: "+err.Error(),
+			"Could not update task, unexpected error: "+formatAPIError(err),
 		)
 		return
 	}
@@ -297,11 +308,11 @@ func (r *TaskResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	}
 
 	// Delete existing task
-	err := r.client.TasksAPI().DeleteTaskWithID(ctx, *state.Id.ValueStringPointer())
-	if err != nil {
+	err := r.client.TasksAPI().DeleteTaskWithID(ctx, state.Id.ValueString())
+	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting task",
-			"Could not delete task, unexpected error: "+err.Error(),
+			"Could not delete task, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -310,22 +321,9 @@ func (r *TaskResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 
 // Configure adds the provider configured client to the resource.
 func (r *TaskResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *TaskResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

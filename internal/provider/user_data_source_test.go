@@ -70,7 +70,7 @@ func TestAccUserDataSourceNonExistent(t *testing.T) {
 			// Test error handling for non-existent user
 			{
 				Config:      providerConfig + testAccUserDataSourceNonExistentConfig,
-				ExpectError: regexp.MustCompile("Unable to retrieves user"),
+				ExpectError: regexp.MustCompile("Error getting user"),
 			},
 		},
 	})

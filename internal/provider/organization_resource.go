@@ -2,23 +2,23 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/influxdata/influxdb-client-go/v2/domain"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &OrganizationResource{}
-	_ resource.ResourceWithImportState = &OrganizationResource{}
-	_ resource.ResourceWithImportState = &OrganizationResource{}
+	_ resource.Resource                 = &OrganizationResource{}
+	_ resource.ResourceWithConfigure    = &OrganizationResource{}
+	_ resource.ResourceWithImportState  = &OrganizationResource{}
+	_ resource.ResourceWithUpgradeState = &OrganizationResource{}
 )
 
 // NewOrganizationResource is a helper function to simplify the provider implementation.
@@ -42,6 +42,9 @@ func (r *OrganizationResource) Schema(ctx context.Context, req resource.SchemaRe
 		// This description is used by the documentation generator and the language server.
 		Description: "Creates and manages new organization.",
 
+		// Version 1 stores timestamps as RFC3339.
+		Version: 1,
+
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:    true,
@@ -61,13 +64,23 @@ func (r *OrganizationResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 			"created_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Organization creation date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Organization creation date in RFC3339 format.",
 			},
 			"updated_at": schema.StringAttribute{
 				Computed:    true,
-				Description: "Last Organization update date.",
+				CustomType:  timetypes.RFC3339Type{},
+				Description: "Last Organization update date in RFC3339 format.",
 			},
 		},
+	}
+}
+
+// UpgradeState migrates state written by prior provider versions: timestamps
+// move from Go's time.Time.String() format to RFC3339.
+func (r *OrganizationResource) UpgradeState(ctx context.Context) map[int64]resource.StateUpgrader {
+	return map[int64]resource.StateUpgrader{
+		0: timestampStateUpgrader("created_at", "updated_at"),
 	}
 }
 
@@ -92,18 +105,14 @@ func (r *OrganizationResource) Create(ctx context.Context, req resource.CreateRe
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating organization",
-			"Could not create organization, unexpected error: "+err.Error(),
+			"Could not create organization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.Name = types.StringValue(apiResponse.Name)
-	plan.Description = types.StringPointerValue(apiResponse.Description)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
+	populateOrganizationModel(&plan, apiResponse)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -126,20 +135,24 @@ func (r *OrganizationResource) Read(ctx context.Context, req resource.ReadReques
 	// Get refreshed organization value from InfluxDB
 	readOrganization, err := r.client.OrganizationsAPI().FindOrganizationByName(ctx, state.Name.ValueString())
 	if err != nil {
+		// The organization was deleted outside of Terraform: remove it from
+		// state so Terraform plans a re-create.
+		if isNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		resp.Diagnostics.AddError(
-			"Organization not found",
-			err.Error(),
+			"Error getting organization",
+			formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Overwrite items with refreshed state
-	state.Id = types.StringPointerValue(readOrganization.Id)
-	state.Name = types.StringValue(readOrganization.Name)
-	state.Description = types.StringPointerValue(readOrganization.Description)
-	state.CreatedAt = types.StringValue(readOrganization.CreatedAt.String())
-	state.UpdatedAt = types.StringValue(readOrganization.UpdatedAt.String())
+	populateOrganizationModel(&state, readOrganization)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
@@ -170,18 +183,14 @@ func (r *OrganizationResource) Update(ctx context.Context, req resource.UpdateRe
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating organization",
-			"Could not update organization, unexpected error: "+err.Error(),
+			"Could not update organization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
 	}
 
 	// Map response body to schema and populate Computed attribute values
-	plan.Id = types.StringPointerValue(apiResponse.Id)
-	plan.Name = types.StringValue(apiResponse.Name)
-	plan.Description = types.StringPointerValue(apiResponse.Description)
-	plan.CreatedAt = types.StringValue(apiResponse.CreatedAt.String())
-	plan.UpdatedAt = types.StringValue(apiResponse.UpdatedAt.String())
+	populateOrganizationModel(&plan, apiResponse)
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -201,11 +210,11 @@ func (r *OrganizationResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	// Delete existing organization
-	err := r.client.OrganizationsAPI().DeleteOrganizationWithID(ctx, *state.Id.ValueStringPointer())
-	if err != nil {
+	err := r.client.OrganizationsAPI().DeleteOrganizationWithID(ctx, state.Id.ValueString())
+	if err != nil && !isNotFoundError(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting organization",
-			"Could not delete organization, unexpected error: "+err.Error(),
+			"Could not delete organization, unexpected error: "+formatAPIError(err),
 		)
 
 		return
@@ -214,22 +223,9 @@ func (r *OrganizationResource) Delete(ctx context.Context, req resource.DeleteRe
 
 // Configure adds the provider configured client to the resource.
 func (r *OrganizationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	// Prevent panic if the provider has not been configured.
-	if req.ProviderData == nil {
-		return
+	if client := configureResourceClient(req, resp); client != nil {
+		r.client = client
 	}
-
-	client, ok := req.ProviderData.(influxdb2.Client)
-	if !ok {
-		resp.Diagnostics.AddError(
-			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected influxdb2.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
-		)
-
-		return
-	}
-
-	r.client = client
 }
 
 func (r *OrganizationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
