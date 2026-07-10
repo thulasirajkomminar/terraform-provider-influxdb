@@ -2,8 +2,32 @@
 
 All notable changes to this project will automatically be documented in this file.
 
-The format is based on vKeep a Changelog(https://keepachangelog.com/en/1.0.0/),
-and this project adheres to vSemantic Versioning(https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## v2.0.0 - 2026-07-10
+
+### Breaking Changes
+
+* `influxdb_authorization`: `permissions` is now a **set** instead of a list, so reordering permission blocks no longer produces a diff. Configurations that index positionally must change `permissions[0]` to `tolist(permissions)[0]`.
+* `created_at`/`updated_at` timestamps (authorization, bucket, organization) are now RFC3339 (e.g. `2026-07-11T09:00:00Z`) instead of Go's time format (`2026-07-11 09:00:00 +0000 UTC`). Existing state is migrated automatically on the first plan/refresh, but anything consuming these values downstream (outputs, `formatdate()`, string comparisons) sees the new format.
+
+> [!Important]
+>
+> No infrastructure changes are required or made by this upgrade: after upgrading, `terraform plan` shows no changes for existing configurations unless they index `permissions` positionally.
+
+### What's Changed
+
+* feat: added `influxdb_variable` resource (full CRUD and import, with plan-time JSON validation of `arguments`) and `influxdb_variable` / `influxdb_variables` data sources.
+* feat: added `influxdb_secret` resource. The InfluxDB API never returns secret values, so out-of-band changes to the value are not detected and import is not supported (see the resource documentation).
+* feat: `TF_LOG=DEBUG` now logs every HTTP request and response. Credentials never reach the logs: the `Authorization` header is injected below the logging layer, and tokens, passwords, sign-in credentials, and session cookies are masked.
+* fix: resources deleted outside of Terraform are now removed from state on refresh and planned for re-creation, instead of failing the refresh.
+* fix: guarded all optional API response fields so partial or unexpected responses produce a diagnostic (including the HTTP status and raw body) instead of a provider crash.
+* fix: stopped recording credentials as (masked) log fields during provider configuration.
+* fix: `url` now ignores trailing slashes, and every provider attribute documents its `INFLUXDB_*` environment variable.
+* fix: `influxdb_secret` sends a correctly encoded upsert body, working around a JSON marshaling bug in the generated InfluxDB client for `PATCH /orgs/{orgID}/secrets`.
+* chore: pinned all GitHub Actions to release commit SHAs, restricted workflow permissions, and added the `helpers:pinGitHubActionDigests` Renovate preset.
+* chore: deduplicated Configure/request-building boilerplate, fixed copy-pasted diagnostics and interface assertions, expanded acceptance test coverage (permission reordering, task import, out-of-band deletion, and the new resources), and refreshed the documentation.
 
 ## v1.6.0 - 2026-03-05
 
